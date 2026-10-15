@@ -1,8 +1,8 @@
-# AsylumAlerts
+# Asylum Alerts
 
 Developed and maintained by **Freddykr**.
 
-AsylumAlerts is a lightweight World of Warcraft add-on that displays visual duration bars for:
+Asylum Alerts is a lightweight World of Warcraft add-on that displays visual duration bars for:
 
 - Main-hand and off-hand temporary weapon enchants (oils, poisons, sharpening stones, runes, imbues, Firestone, and Spellstone), including multiple stackable enchants on one weapon in Forever
 - Trinket cooldowns for slots 13 and 14, labelled and announced with the equipped items' actual names
