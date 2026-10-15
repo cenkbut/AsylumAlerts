@@ -22,7 +22,7 @@ The announcement defaults to a bright green Friz Quadrata font with a thick blac
 
 Type `/aa` or `/asylumalerts` to open settings. Click **Unlock positions**, then drag either the purple `AsylumAlerts - drag to move` bar handle or the separate `Ready alert - drag to move` announcement. Closing the settings window automatically locks both positions.
 
-The draggable minimap emblem opens settings with a left-click. Right-click it to lock or unlock the bars and announcement position.
+The draggable minimap emblem opens settings with a left-click. Right-click it to lock or unlock the bars and announcement position. It is shown by default and can be hidden with **Show minimap button** in `/aa`.
 
 Other commands:
 
@@ -40,7 +40,7 @@ Copy the `AsylumAlerts` directory into `World of Warcraft/_classic_beta_/Interfa
 ## Notes
 
 - Personal bars require a finite duration and default to at least 8 seconds, which avoids most very short proc spam.
-- **Buffs cast on you by other players and envionment** is optional and disabled by default. Enable it in `/aa` to show Camp Benefits, Paladin Blessings, Priest Fortitude/Prayer buffs, Druid Mark/Gift of the Wild and other timed auras cast on you by another player.
+- **Buffs cast on you by other players and environment** is optional and disabled by default. Enable it in `/aa` to show Camp Benefits, Paladin Blessings, Priest Fortitude/Prayer buffs, Druid Mark/Gift of the Wild and other timed auras cast on you by another player.
 - On Forever, ownership is verified against the character's known spells and observed casts rather than trusting the unreliable aura ownership flag.
 - Temporary effects produced by equipped trinkets appear as duration bars while active, but remain excluded from maintenance warnings; trinkets announce only when their actual item cooldown finishes.
 - Trinket effects are correlated across both event orders (aura-first and cooldown-first), preventing their expiration from producing a “recast it” message.
@@ -56,6 +56,6 @@ Copy the `AsylumAlerts` directory into `World of Warcraft/_classic_beta_/Interfa
 - Oils and API-backed poisons use the weapon slot's exact millisecond timer. If their tooltip name disappears shortly before expiry, the bar and name remain until that exact timer reaches zero; Firestone and Spellstone continue using their independent tracking path.
 - Numeric Firestone and Spellstone ranks are displayed explicitly, for example `Firestone (Rank 1)`.
 - Flask, phial, and elixir names are kept separate from long class buffs so Fortitude and Blessings receive the correct external-buff treatment.
-- Modern WoW can conceal some aura timing values during combat. AsylumAlerts keeps the last safe timer visible until it expires instead of dropping all bars.
+- WoW Forever can conceal some aura timing values during combat. AsylumAlerts keeps the last safe timer visible until it expires instead of dropping all bars.
 - If Forever returns a missing or zero icon for an aura or equipped item, the add-on resolves it again from the spell or item ID before using a generic fallback icon.
 - Bar icons use a fixed high overlay layer so the status-bar fill cannot cover them after `/reload`.

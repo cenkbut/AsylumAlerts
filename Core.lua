@@ -19,6 +19,7 @@ local defaults = {
     maxBars = 20,
     minPersonalDuration = 8,
     minimapAngle = 225,
+    showMinimapButton = true,
     showIcons = true,
     showWeapon = true,
     showTrinkets = true,
@@ -288,6 +289,14 @@ function AA:UpdateMinimapButtonPosition()
     self.minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
 end
 
+function AA:UpdateMinimapButtonVisibility()
+    if not self.minimapButton then
+        if self.db and self.db.showMinimapButton then self:CreateMinimapButton() end
+        return
+    end
+    self.minimapButton:SetShown(self.db.showMinimapButton)
+end
+
 function AA:CreateMinimapButton()
     if self.minimapButton or not Minimap then return end
     local button = CreateFrame("Button", "AsylumAlertsMinimapButton", Minimap)
@@ -333,6 +342,7 @@ function AA:CreateMinimapButton()
 
     self.minimapButton = button
     self:UpdateMinimapButtonPosition()
+    self:UpdateMinimapButtonVisibility()
 end
 
 function AA:CreateAnchor()

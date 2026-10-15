@@ -48,7 +48,7 @@ end
 function AA:CreateConfig()
     if self.config then return end
     local frame = CreateFrame("Frame", "AsylumAlertsConfig", UIParent, "BackdropTemplate")
-    frame:SetSize(430, 720)
+    frame:SetSize(430, 750)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
     frame:SetMovable(true)
@@ -171,8 +171,16 @@ function AA:CreateConfig()
     icons:SetPoint("TOPLEFT", 20, y)
     frame.icons = icons
 
+    y = y - 30
+    local minimapButton = MakeCheckbox(frame, "Show minimap button", function(value)
+        AA.db.showMinimapButton = value
+        AA:UpdateMinimapButtonVisibility()
+    end)
+    minimapButton:SetPoint("TOPLEFT", 20, y)
+    frame.minimapButton = minimapButton
+
     local lock = MakeButton(frame, "Unlock positions", 125, function() AA:ToggleLocked() end)
-    lock:SetPoint("TOPLEFT", 22, -400)
+    lock:SetPoint("TOPLEFT", 22, -430)
     frame.lock = lock
 
     local reset = MakeButton(frame, "Reset positions", 125, function() AA:ResetPosition() end)
@@ -184,7 +192,7 @@ function AA:CreateConfig()
     test:SetPoint("LEFT", reset, "RIGHT", 10, 0)
 
     local widthLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    widthLabel:SetPoint("TOPLEFT", 22, -446)
+    widthLabel:SetPoint("TOPLEFT", 22, -476)
     widthLabel:SetText("Bar width")
     local width = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
     width:SetPoint("TOPLEFT", widthLabel, "BOTTOMLEFT", 5, -12)
@@ -207,11 +215,11 @@ function AA:CreateConfig()
         AA.db.growUp = value
         AA:LayoutBars()
     end)
-    grow:SetPoint("TOPLEFT", 285, -452)
+    grow:SetPoint("TOPLEFT", 285, -482)
     frame.grow = grow
 
     local appearanceTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    appearanceTitle:SetPoint("TOPLEFT", 22, -525)
+    appearanceTitle:SetPoint("TOPLEFT", 22, -555)
     appearanceTitle:SetText("Announcement appearance")
 
     local fontButton = MakeButton(frame, "Font", 190, function()
@@ -221,7 +229,7 @@ function AA:CreateConfig()
         AA:ApplyAlertAppearance()
         AA:UpdateConfig()
     end)
-    fontButton:SetPoint("TOPLEFT", 22, -558)
+    fontButton:SetPoint("TOPLEFT", 22, -588)
     frame.fontButton = fontButton
 
     local colorLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -270,7 +278,7 @@ function AA:CreateConfig()
     end)
 
     local sizeLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sizeLabel:SetPoint("TOPLEFT", 22, -605)
+    sizeLabel:SetPoint("TOPLEFT", 22, -635)
     sizeLabel:SetText("Font size")
     frame.sizeLabel = sizeLabel
     local sizeSlider = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
@@ -295,7 +303,7 @@ function AA:CreateConfig()
         AA.db.alertSound = AA.ALERT_SOUNDS[index].key
         AA:UpdateConfig()
     end)
-    soundButton:SetPoint("TOPLEFT", 22, -685)
+    soundButton:SetPoint("TOPLEFT", 22, -715)
     frame.soundButton = soundButton
 
     local soundHelp = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -321,6 +329,7 @@ function AA:UpdateConfig()
     frame.announcements:SetChecked(self.db.showAnnouncements)
     frame.chatAlerts:SetChecked(self.db.printChatAlerts)
     frame.icons:SetChecked(self.db.showIcons)
+    frame.minimapButton:SetChecked(self.db.showMinimapButton)
     frame.grow:SetChecked(self.db.growUp)
     frame.lock:SetText(self.db.locked and "Unlock positions" or "Lock positions")
     frame.widthSlider:SetValue(self.db.width)

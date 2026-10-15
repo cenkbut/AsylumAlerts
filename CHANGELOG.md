@@ -8,6 +8,11 @@ prepared for testing or release.
 
 - No changes yet.
 
+## 0.4.23 - 2026-10-15
+
+- Added a saved **Show minimap button** toggle to `/aa`, enabled by default.
+- Applied minimap-button visibility changes immediately without requiring `/reload`.
+
 ## 0.4.22 - 2026-10-15
 
 - Removed the final inherited project-name reference from AsylumAlerts documentation.
