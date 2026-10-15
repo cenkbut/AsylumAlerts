@@ -1,0 +1,9 @@
+## Interface: 120100, 16001
+## Title: |cff9b7cffAsylum|r|cffeeeeeeAlerts|r
+## Notes: Movable cooldown bars and ready/expired alerts for trinkets, Soulstone, weapon enchants, flasks, and personal buffs.
+## Author: Freddykr
+## Version: 0.4.22
+## SavedVariables: AsylumAlertsDB
+
+Core.lua
+Config.lua
