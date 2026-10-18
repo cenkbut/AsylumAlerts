@@ -108,6 +108,14 @@ function AA:CreateConfig()
     trinkets:SetPoint("TOPLEFT", 20, y)
     frame.trinkets = trinkets
 
+    y = y - 26
+    local potions = MakeCheckbox(frame, "Potion cooldowns (excluding healing and Swiftness)", function(value)
+        AA.db.showPotions = value
+        AA:Refresh()
+    end)
+    potions:SetPoint("TOPLEFT", 20, y)
+    frame.potions = potions
+
     y = y - 30
     local soulstone = MakeCheckbox(frame, "Soulstone cooldown (Warlock)", function(value)
         AA.db.showSoulstone = value
@@ -322,6 +330,7 @@ function AA:UpdateConfig()
     frame.enabled:SetChecked(self.db.enabled)
     frame.weapon:SetChecked(self.db.showWeapon)
     frame.trinkets:SetChecked(self.db.showTrinkets)
+    frame.potions:SetChecked(self.db.showPotions)
     frame.soulstone:SetChecked(self.db.showSoulstone)
     frame.flasks:SetChecked(self.db.showFlasks)
     frame.personal:SetChecked(self.db.showPersonal)

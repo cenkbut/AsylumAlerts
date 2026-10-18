@@ -8,6 +8,50 @@ prepared for testing or release.
 
 - No changes yet.
 
+## 0.5.0 - 2026-10-18
+
+- Promoted the Forever potion and buff-tracking work to a stable feature release.
+- Removed Retail from the accepted interface metadata so distributors classify
+  this package as Forever-only.
+- Added default-on potion cooldown tracking with localized names, icons, and ready
+  alerts while excluding healing, health, rejuvenation, and Swiftness potions.
+- Kept potion-effect expiry separate from the actual potion cooldown reminder.
+- Corrected Retail ownership and expiry handling for self buffs, passive procs,
+  external buffs, and aura scans interrupted by hearthstone or portal transitions.
+- Recognized **Well Fed** as a self-applied consumable on Forever without weakening
+  its stricter external-buff ownership checks.
+
+## 0.4.27 - 2026-10-18
+
+- Prevented Retail hearthstone, portal, and loading transitions from falsely
+  announcing that still-active auras such as Power Word: Fortitude expired.
+- Left Forever's existing early aura-removal detection unchanged.
+
+## 0.4.26 - 2026-10-18
+
+- Prevented passive Retail proc buffs from producing personal **recast it** spam.
+  Their duration bars remain visible, while player-initiated maintenance buffs
+  retain expiry reminders.
+
+## 0.4.25 - 2026-10-18
+
+- Suppressed personal-buff recast warnings when a tracked potion's temporary
+  effect expires; its separate cooldown bar and ready alert continue normally.
+
+## 0.4.24 - 2026-10-18
+
+- Added Retail (`120100`) to the accepted client interface versions so the add-on
+  can be loaded for compatibility testing alongside Forever.
+- Trusted Retail's player-source aura metadata so self-applied food and item buffs
+  are not categorized as buffs from other players, without changing Forever's
+  stricter ownership fallback.
+- Recognized the exact **Well Fed** aura as a self-applied consumable on Forever,
+  while retaining strict ownership checks for other player-cast buffs.
+- Added default-on potion cooldown tracking for Forever and compatible Retail
+  clients, using the consumed potion's localized name and icon.
+- Excluded healing, health, rejuvenation, and Swiftness potions from cooldown
+  tracking, and consolidated shared potion cooldowns into one bar and ready alert.
+
 ## 0.4.23 - 2026-10-15
 
 - Added a saved **Show minimap button** toggle to `/aa`, enabled by default.

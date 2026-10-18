@@ -6,6 +6,7 @@ Asylum Alerts is a lightweight World of Warcraft add-on that displays visual dur
 
 - Main-hand and off-hand temporary weapon enchants (oils, poisons, sharpening stones, runes, imbues, Firestone, and Spellstone), including multiple stackable enchants on one weapon in Forever
 - Trinket cooldowns for slots 13 and 14, labelled and announced with the equipped items' actual names
+- Potion cooldowns, labelled and announced with the consumed potion's actual name
 - Warlock Soulstone cooldowns
 - Flasks, phials, elixirs, and other long-duration personal consumable buffs
 - Timed helpful buffs cast by the player or the player's pet
@@ -35,7 +36,9 @@ Other commands:
 
 ## Installation
 
-Copy the `AsylumAlerts` directory into `World of Warcraft/_classic_beta_/Interface/AddOns/` (or the corresponding AddOns directory for the supported Forever client), then enable it on the character-selection AddOns screen.
+Copy the `AsylumAlerts` directory into `World of Warcraft/_classic_beta_/Interface/AddOns/`
+(or the corresponding AddOns directory for the supported Forever client), then
+enable it on the character-selection AddOns screen.
 
 ## Notes
 
@@ -43,8 +46,9 @@ Copy the `AsylumAlerts` directory into `World of Warcraft/_classic_beta_/Interfa
 - **Buffs cast on you by other players and environment** is optional and disabled by default. Enable it in `/aa` to show Camp Benefits, Paladin Blessings, Priest Fortitude/Prayer buffs, Druid Mark/Gift of the Wild and other timed auras cast on you by another player.
 - On Forever, ownership is verified against the character's known spells and observed casts rather than trusting the unreliable aura ownership flag.
 - Temporary effects produced by equipped trinkets appear as duration bars while active, but remain excluded from maintenance warnings; trinkets announce only when their actual item cooldown finishes.
+- **Potion cooldowns** is enabled by default. It tracks eligible potions actually consumed from the character's bags and excludes healing, health, rejuvenation, and Swiftness potions.
 - Trinket effects are correlated across both event orders (aura-first and cooldown-first), preventing their expiration from producing a “recast it” message.
-- Bars are grouped in this order: personal/flask buffs, weapon oils and stones, external-player buffs, then trinket and Soulstone cooldowns.
+- Bars are grouped in this order: personal/flask buffs, weapon oils and stones, external-player buffs, then potion, trinket, and Soulstone cooldowns.
 - Weapon enchant names are preserved when the game temporarily stops exposing their tooltip text near expiry, preventing an early duplicate warning and a switch to a generic main/off-hand label.
 - The weapon-name fallback is stack-aware on Forever, so Firestone or Spellstone remains tracked when it is stacked with an oil or another weapon effect.
 - Compound weapon durations such as `1 hr 52 min` are parsed in full, preventing a stacked stone from borrowing an oil's shorter slot timer.

@@ -23,6 +23,7 @@ local defaults = {
     showIcons = true,
     showWeapon = true,
     showTrinkets = true,
+    showPotions = true,
     showSoulstone = true,
     showFlasks = true,
     showPersonal = true,
@@ -33,6 +34,7 @@ local defaults = {
     colors = {
         weapon = { 0.86, 0.58, 0.20 },
         trinket = { 0.96, 0.36, 0.28 },
+        potion = { 0.30, 0.82, 0.48 },
         soulstone = { 0.55, 0.30, 0.78 },
         flask = { 0.42, 0.72, 0.95 },
         personal = { 0.61, 0.42, 0.91 },
@@ -47,10 +49,15 @@ AA.scanElapsed = 0
 AA.initialized = false
 AA.trinketState = {}
 AA.trinketAuraKeys = {}
+AA.potionState = { knownBySpell = {}, slots = {} }
 AA.playerCastSpells = {}
+AA.playerRequestedSpells = {}
 AA.iconCache = {}
 AA.soulstoneState = {}
 AA.announcementQueue = {}
+
+local _, _, _, clientInterface = GetBuildInfo()
+local IS_RETAIL = type(clientInterface) == "number" and clientInterface >= 100000
 
 AA.ALERT_FONTS = {
     { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
@@ -73,6 +80,7 @@ local BAR_KIND_ORDER = {
     flask = 1,
     weapon = 2,
     external = 3,
+    potion = 4,
     trinket = 4,
     soulstone = 4,
 }
@@ -203,6 +211,7 @@ end
 
 local function IsPlayerAura(aura, spellID)
     local source = SafeText(AuraValue(aura, "sourceUnit"))
+    local isFromPlayerOrPet = SafeTrue(AuraValue(aura, "isFromPlayerOrPlayerPet"))
     local castByPlayer = spellID and AA.playerCastSpells[spellID]
     local known
     if spellID then
@@ -216,6 +225,9 @@ local function IsPlayerAura(aura, spellID)
     if source then
         if source == "pet" then return true end
         if source == "player" then
+            -- Retail reliably identifies self-applied item and food auras as
+            -- player-sourced even though their aura spells are not learned.
+            if IS_RETAIL then return true end
             if castByPlayer or known then return true end
             if spellID then return false end
             return true
@@ -227,6 +239,7 @@ local function IsPlayerAura(aura, spellID)
     -- Forever can report isFromPlayerOrPlayerPet=true for an aura applied to the
     -- player by somebody else. If the caster token is unavailable, ownership is
     -- instead inferred from whether this character actually knows the spell.
+    if IS_RETAIL and isFromPlayerOrPet then return true end
     if castByPlayer or known then return true end
     if spellID then return false end
     return nil
@@ -257,6 +270,12 @@ local function IsLongConsumable(name, duration)
     return lower:find("flask", 1, true)
         or lower:find("phial", 1, true)
         or lower:find("elixir", 1, true)
+end
+
+local function IsSelfAppliedConsumable(name)
+    -- Forever does not reliably expose the caster for item-created auras. Keep
+    -- this list narrow so genuine buffs from other players remain external.
+    return name:lower() == "well fed"
 end
 
 local function NormalizeMaintenanceName(name)
@@ -648,7 +667,8 @@ function AA:CollectAuras(found)
             or lowerName:find("spellstone", 1, true)
         )
         local isFlask = name and IsLongConsumable(name, duration or 0)
-        if isWeaponAura or isFlask then isOwn = true end
+        local isSelfConsumable = name and IsSelfAppliedConsumable(name)
+        if isWeaponAura or isFlask or isSelfConsumable then isOwn = true end
         if InCombatLockdown() and (not name or not duration or not expires or isOwn == nil) then
             completed = false
         end
@@ -659,6 +679,13 @@ function AA:CollectAuras(found)
             local auraKey = "aura:" .. tostring(keyID)
             local previousEntry = self.active[auraKey]
             local auraAge = math.max(0, duration - (expires - now))
+            local castAt = spellID and self.playerRequestedSpells[spellID]
+            local recentlyCast = type(castAt) == "number" and now - castAt <= 6
+            local knownPotion = spellID and self.potionState.knownBySpell[spellID]
+            local potionAura = knownPotion and not knownPotion.excluded
+            if not potionAura and self.potionState.name and name then
+                potionAura = self.potionState.onCooldown and name == self.potionState.name
+            end
             local trinketAura = self.trinketAuraKeys[auraKey]
                 or IsEquippedTrinketAura(spellID, name)
                 or (isOwn == true and not isWeaponAura and not isFlask
@@ -680,6 +707,8 @@ function AA:CollectAuras(found)
             if include then
                 local kind = isWeaponAura and "weapon"
                     or (isExternal and "external" or (isFlask and "flask" or "personal"))
+                local maintenanceAlert = (previousEntry and previousEntry.maintenanceAlert)
+                    or recentlyCast or isFlask or isSelfConsumable
                 local icon = ResolveAuraTexture(aura, spellID, auraKey)
                 found[auraKey] = {
                     key = auraKey,
@@ -689,7 +718,9 @@ function AA:CollectAuras(found)
                     duration = duration,
                     expires = expires,
                     firstSeen = (previousEntry and previousEntry.firstSeen) or now,
-                    suppressExpiryAlert = trinketAura and true or nil,
+                    maintenanceAlert = maintenanceAlert and true or nil,
+                    suppressExpiryAlert = (trinketAura or potionAura
+                        or (IS_RETAIL and kind == "personal" and not maintenanceAlert)) and true or nil,
                 }
             end
         end
@@ -1087,6 +1118,174 @@ function AA:CollectWeaponEnchants(found)
     return complete
 end
 
+local function GetBagSlotCount(bag)
+    local getter = C_Container and C_Container.GetContainerNumSlots or GetContainerNumSlots
+    if not getter then return 0 end
+    local ok, count = pcall(getter, bag)
+    count = ok and SafeNumber(count) or nil
+    return count and math.max(0, math.floor(count)) or 0
+end
+
+local function GetBagItemID(bag, slot)
+    local getter = C_Container and C_Container.GetContainerItemID or GetContainerItemID
+    if not getter then return nil end
+    local ok, itemID = pcall(getter, bag, slot)
+    return ok and SafeNumber(itemID) or nil
+end
+
+local function GetBagItemCooldown(bag, slot)
+    local getter = C_Container and C_Container.GetContainerItemCooldown or GetContainerItemCooldown
+    if not getter then return nil end
+    local ok, startTime, duration, enabled = pcall(getter, bag, slot)
+    if not ok then return nil end
+    return SafeNumber(startTime), SafeNumber(duration), enabled
+end
+
+local function GetCooldownForItem(itemID)
+    if not itemID then return nil end
+    if C_Item and C_Item.GetItemCooldown then
+        local ok, startTime, duration, enabled = pcall(C_Item.GetItemCooldown, itemID)
+        if ok then
+            if type(startTime) == "table" then
+                local info = startTime
+                return SafeNumber(AuraValue(info, "startTime")),
+                    SafeNumber(AuraValue(info, "duration")),
+                    AuraValue(info, "isEnabled")
+            end
+            return SafeNumber(startTime), SafeNumber(duration), enabled
+        end
+    end
+    if GetItemCooldown then
+        local ok, startTime, duration, enabled = pcall(GetItemCooldown, itemID)
+        if ok then return SafeNumber(startTime), SafeNumber(duration), enabled end
+    end
+end
+
+local function IsPotionItem(itemID)
+    local getter = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+    if not itemID or not getter then return false end
+    local ok, _, _, _, _, _, classID, subclassID = pcall(getter, itemID)
+    if not ok then return false end
+    local consumableClass = Enum and Enum.ItemClass and Enum.ItemClass.Consumable or 0
+    local potionSubclass = Enum and Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.Potion or 1
+    return classID == consumableClass and subclassID == potionSubclass
+end
+
+local function IsExcludedPotion(name)
+    if type(name) ~= "string" then return true end
+    local lower = name:lower()
+    return lower:find("healing", 1, true)
+        or lower:find("health", 1, true)
+        or lower:find("rejuvenation", 1, true)
+        or lower:find("swiftness", 1, true)
+end
+
+function AA:CachePotionItems()
+    local state = self.potionState
+    state.slots = {}
+    local lastBag = NUM_BAG_SLOTS or 4
+    for bag = 0, lastBag do
+        for slot = 1, GetBagSlotCount(bag) do
+            local itemID = GetBagItemID(bag, slot)
+            if itemID and IsPotionItem(itemID) then
+                local name = ResolveItemName(itemID)
+                local spellGetter = C_Item and C_Item.GetItemSpell or GetItemSpell
+                local ok, _, spellID
+                if spellGetter then ok, _, spellID = pcall(spellGetter, itemID) end
+                spellID = ok and SafeNumber(spellID) or nil
+                local potion = {
+                    itemID = itemID,
+                    spellID = spellID,
+                    name = name,
+                    icon = ResolveItemTexture(itemID) or 134712,
+                    bag = bag,
+                    slot = slot,
+                    excluded = IsExcludedPotion(name),
+                }
+                state.slots[#state.slots + 1] = potion
+                -- Retain previously seen entries so using the final item in a
+                -- stack can still be matched after it disappears from the bag.
+                if spellID and name then state.knownBySpell[spellID] = potion end
+            end
+        end
+    end
+end
+
+function AA:OnPossiblePotionUse(spellID)
+    if not self.db.showPotions or not spellID then return end
+    local potion = self.potionState.knownBySpell[spellID]
+    if not potion or potion.excluded then return end
+    self.potionState.pending = {
+        itemID = potion.itemID,
+        spellID = potion.spellID,
+        name = potion.name,
+        icon = potion.icon,
+        usedAt = GetTime(),
+    }
+end
+
+function AA:CollectPotions(found)
+    local state = self.potionState
+    if not self.db.showPotions then
+        state.pending = nil
+        state.onCooldown = false
+        state.armed = false
+        state.expires = nil
+        return
+    end
+
+    local now = GetTime()
+    local pending = state.pending
+    if pending and now - pending.usedAt <= 8 then
+        local startTime, duration = GetCooldownForItem(pending.itemID)
+        if not (startTime and duration and duration > 1.5 and startTime > 0) then
+            for _, potion in ipairs(state.slots) do
+                if potion.itemID == pending.itemID then
+                    startTime, duration = GetBagItemCooldown(potion.bag, potion.slot)
+                    if startTime and duration and duration > 1.5 and startTime > 0 then break end
+                end
+            end
+        end
+        if startTime and duration and duration > 1.5 and startTime > 0
+            and startTime + duration > now + 0.05
+            and now - startTime <= 8
+        then
+            state.itemID = pending.itemID
+            state.spellID = pending.spellID
+            state.name = pending.name or "Potion"
+            state.icon = pending.icon or 134712
+            state.duration = duration
+            state.expires = startTime + duration
+            state.onCooldown = true
+            state.armed = true
+            state.pending = nil
+        end
+    elseif pending then
+        state.pending = nil
+    end
+
+    if state.onCooldown and state.expires and state.expires <= now then
+        if state.armed and now >= (self.suppressAnnouncementsUntil or 0) then
+            self:ShowAnnouncement((state.name or "Potion") .. " is ready!")
+        end
+        state.onCooldown = false
+        state.armed = false
+        state.expires = nil
+        state.duration = nil
+    end
+
+    if state.onCooldown and state.expires and state.expires > now then
+        found["potion:shared"] = {
+            key = "potion:shared",
+            kind = "potion",
+            name = state.name or "Potion",
+            icon = state.icon or 134712,
+            duration = state.duration or math.max(1, state.expires - now),
+            expires = state.expires,
+        }
+    end
+end
+
 local function GetEquippedCooldown(slot, itemID)
     if GetInventoryItemCooldown then
         local ok, startTime, duration, enabled = pcall(GetInventoryItemCooldown, "player", slot)
@@ -1294,11 +1493,15 @@ function AA:AnnounceEndedEntries(previous, current, auraScanComplete, weaponScan
             and not entry.suppressExpiryAlert and not self.trinketAuraKeys[key]
         then
             local finished = entry.expires and entry.expires <= now + 0.25
-            if entry.kind == "flask" and self.db.showFlasks and (finished or auraScanComplete) then
+            -- Retail can briefly return an empty-but-successful aura scan while
+            -- zoning via a hearthstone or portal. Only its real timer is safe
+            -- evidence of expiry; Forever retains early-removal detection.
+            local auraEnded = finished or (not IS_RETAIL and auraScanComplete)
+            if entry.kind == "flask" and self.db.showFlasks and auraEnded then
                 self:ShowAnnouncement(entry.name .. " has expired - refresh your flask!")
-            elseif entry.kind == "personal" and self.db.showPersonal and (finished or auraScanComplete) then
+            elseif entry.kind == "personal" and self.db.showPersonal and auraEnded then
                 self:ShowAnnouncement(entry.name .. " has expired - recast it!")
-            elseif entry.kind == "external" and self.db.showExternalBuffs and (finished or auraScanComplete) then
+            elseif entry.kind == "external" and self.db.showExternalBuffs and auraEnded then
                 self:ShowAnnouncement(entry.name .. " has expired!")
             elseif entry.kind == "weapon" and self.db.showWeapon and (finished or weaponScanComplete) then
                 self:ShowAnnouncement(entry.name .. " has expired - reapply it!")
@@ -1318,6 +1521,7 @@ function AA:Refresh()
     -- Detect a newly activated trinket before scanning auras. This lets the aura
     -- pass suppress the trinket's temporary proc buff from maintenance warnings.
     self:CollectTrinkets(found)
+    self:CollectPotions(found)
     local auraScanComplete = self:CollectAuras(found)
     local weaponScanComplete = self:CollectWeaponEnchants(found)
     self:CollectSoulstone(found)
@@ -1363,6 +1567,7 @@ function AA:RenderBars()
     if not self.db.locked and #list == 0 then
         list = {
             { kind = "trinket", name = self:GetTrinketName(1), icon = ResolveItemTexture(GetInventoryItemID("player", 13), 13) or 132142, duration = 120, expires = now + 94, preview = true },
+            { kind = "potion", name = "Potion cooldown", icon = 134712, duration = 120, expires = now + 66, preview = true },
             { kind = "soulstone", name = "Soulstone", icon = 136210, duration = 600, expires = now + 420, preview = true },
             { kind = "weapon", name = "Weapon buff / oil", icon = 135249, duration = 3600, expires = now + 2840, preview = true },
             { kind = "flask", name = "Flask / phial", icon = 134719, duration = 3600, expires = now + 1920, preview = true },
@@ -1425,9 +1630,11 @@ events:RegisterEvent("UNIT_AURA")
 events:RegisterEvent("UNIT_INVENTORY_CHANGED")
 events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:RegisterEvent("BAG_UPDATE_COOLDOWN")
 events:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+events:RegisterEvent("UNIT_SPELLCAST_SENT")
 events:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 
 events:SetScript("OnEvent", function(_, event, ...)
@@ -1444,6 +1651,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         AA:CreateAnnouncementFrame()
         AA:CreateMinimapButton()
         AA:SetLocked(AA.db.locked, true)
+        AA:CachePotionItems()
         AA:Refresh()
         C_Timer.After(2, function() AA:Refresh() end)
         print("|cff9b7cffAsylumAlerts|r loaded. Type |cffffffff/aa|r for settings.")
@@ -1453,11 +1661,22 @@ events:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UNIT_INVENTORY_CHANGED" then
         local unit = ...
         if unit == "player" and AA.initialized then AA:Refresh() end
+    elseif event == "BAG_UPDATE_DELAYED" then
+        if AA.initialized then
+            AA:CachePotionItems()
+            AA:Refresh()
+        end
+    elseif event == "UNIT_SPELLCAST_SENT" then
+        local unit, _, _, spellID = ...
+        if unit == "player" and type(spellID) == "number" then
+            AA.playerRequestedSpells[spellID] = GetTime()
+        end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, arg2, arg3 = ...
         local spellID = type(arg3) == "number" and arg3 or (type(arg2) == "number" and arg2 or nil)
         if unit == "player" and AA.initialized then
-            if spellID then AA.playerCastSpells[spellID] = true end
+            if spellID then AA.playerCastSpells[spellID] = GetTime() end
+            AA:OnPossiblePotionUse(spellID)
             AA:OnPossibleSoulstoneCast(spellID)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
