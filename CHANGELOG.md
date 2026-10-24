@@ -8,6 +8,13 @@ prepared for testing or release.
 
 - No changes yet.
 
+## 0.5.1 - 2026-10-19
+
+- Prevented Forever hearthstone, ship, portal, and other zone transitions from
+  falsely announcing that still-active auras or weapon enchants have expired.
+- Stopped Food, Drink, healing-over-time effects, and other short-lived personal
+  effects from producing expiry or recast warnings; their timer bars remain.
+
 ## 0.5.0 - 2026-10-18
 
 - Promoted the Forever potion and buff-tracking work to a stable feature release.

@@ -55,9 +55,22 @@ AA.playerRequestedSpells = {}
 AA.iconCache = {}
 AA.soulstoneState = {}
 AA.announcementQueue = {}
+AA.worldTransitionUntil = 0
 
 local _, _, _, clientInterface = GetBuildInfo()
 local IS_RETAIL = type(clientInterface) == "number" and clientInterface >= 100000
+local WORLD_TRANSITION_GRACE = 8
+
+function AA:BeginWorldTransition(seconds, restartGrace)
+    local transitionEnds = GetTime() + (seconds or WORLD_TRANSITION_GRACE)
+    if restartGrace then
+        self.worldTransitionUntil = transitionEnds
+        self.suppressAnnouncementsUntil = transitionEnds
+    else
+        self.worldTransitionUntil = math.max(self.worldTransitionUntil or 0, transitionEnds)
+        self.suppressAnnouncementsUntil = math.max(self.suppressAnnouncementsUntil or 0, transitionEnds)
+    end
+end
 
 AA.ALERT_FONTS = {
     { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
@@ -276,6 +289,31 @@ local function IsSelfAppliedConsumable(name)
     -- Forever does not reliably expose the caster for item-created auras. Keep
     -- this list narrow so genuine buffs from other players remain external.
     return name:lower() == "well fed"
+end
+
+local TRANSIENT_RECOVERY_AURAS = {
+    ["food"] = true,
+    ["drink"] = true,
+    ["food & drink"] = true,
+    ["food and drink"] = true,
+    ["rejuvenation"] = true,
+    ["regrowth"] = true,
+    ["lifebloom"] = true,
+    ["wild growth"] = true,
+    ["renew"] = true,
+    ["riptide"] = true,
+    ["renewing mist"] = true,
+    ["enveloping mist"] = true,
+    ["soothing mist"] = true,
+}
+
+local function IsTransientRecoveryAura(name, duration)
+    if type(name) == "string" and TRANSIENT_RECOVERY_AURAS[name:lower()] then
+        return true
+    end
+    -- Short personal effects are combat procs, healing-over-time effects, or
+    -- recovery channels rather than buffs that need an expiry reminder.
+    return type(duration) == "number" and duration <= 30
 end
 
 local function NormalizeMaintenanceName(name)
@@ -668,6 +706,7 @@ function AA:CollectAuras(found)
         )
         local isFlask = name and IsLongConsumable(name, duration or 0)
         local isSelfConsumable = name and IsSelfAppliedConsumable(name)
+        local isTransientRecovery = name and IsTransientRecoveryAura(name, duration)
         if isWeaponAura or isFlask or isSelfConsumable then isOwn = true end
         if InCombatLockdown() and (not name or not duration or not expires or isOwn == nil) then
             completed = false
@@ -708,7 +747,7 @@ function AA:CollectAuras(found)
                 local kind = isWeaponAura and "weapon"
                     or (isExternal and "external" or (isFlask and "flask" or "personal"))
                 local maintenanceAlert = (previousEntry and previousEntry.maintenanceAlert)
-                    or recentlyCast or isFlask or isSelfConsumable
+                    or (recentlyCast and not isTransientRecovery) or isFlask or isSelfConsumable
                 local icon = ResolveAuraTexture(aura, spellID, auraKey)
                 found[auraKey] = {
                     key = auraKey,
@@ -719,7 +758,7 @@ function AA:CollectAuras(found)
                     expires = expires,
                     firstSeen = (previousEntry and previousEntry.firstSeen) or now,
                     maintenanceAlert = maintenanceAlert and true or nil,
-                    suppressExpiryAlert = (trinketAura or potionAura
+                    suppressExpiryAlert = (trinketAura or potionAura or isTransientRecovery
                         or (IS_RETAIL and kind == "personal" and not maintenanceAlert)) and true or nil,
                 }
             end
@@ -1526,23 +1565,27 @@ function AA:Refresh()
     local weaponScanComplete = self:CollectWeaponEnchants(found)
     self:CollectSoulstone(found)
 
-    -- During combat, modern clients can hide aura values. Keep the last safe aura
-    -- snapshot until it expires instead of making every bar disappear at once.
-    if not auraScanComplete then
-        local now = GetTime()
+    local now = GetTime()
+    local changingWorld = now < (self.worldTransitionUntil or 0)
+
+    -- Aura and weapon APIs can briefly report a complete but empty snapshot while
+    -- changing maps, including Forever ship journeys. Keep the last safe timers
+    -- through the transition grace period just as we do for incomplete scans.
+    if changingWorld or not auraScanComplete then
         for key, entry in pairs(previous) do
             local shouldPreserve = entry.kind == "flask"
                 or entry.kind == "personal"
                 or (entry.kind == "external" and self.db.showExternalBuffs)
-            if shouldPreserve and entry.expires > now then
+            if shouldPreserve and not found[key] and entry.expires > now then
                 found[key] = entry
             end
         end
     end
-    if not weaponScanComplete then
-        local now = GetTime()
+    if changingWorld or not weaponScanComplete then
         for key, entry in pairs(previous) do
-            if entry.kind == "weapon" and entry.expires > now then found[key] = entry end
+            if entry.kind == "weapon" and not found[key] and entry.expires > now then
+                found[key] = entry
+            end
         end
     end
     self:AnnounceEndedEntries(previous, found, auraScanComplete, weaponScanComplete)
@@ -1629,7 +1672,9 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("UNIT_AURA")
 events:RegisterEvent("UNIT_INVENTORY_CHANGED")
 events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+events:RegisterEvent("PLAYER_LEAVING_WORLD")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:RegisterEvent("BAG_UPDATE_COOLDOWN")
 events:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
@@ -1646,7 +1691,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         events:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         AA.initialized = true
-        AA.suppressAnnouncementsUntil = GetTime() + 3
+        AA:BeginWorldTransition()
         AA:CreateAnchor()
         AA:CreateAnnouncementFrame()
         AA:CreateMinimapButton()
@@ -1679,8 +1724,12 @@ events:SetScript("OnEvent", function(_, event, ...)
             AA:OnPossiblePotionUse(spellID)
             AA:OnPossibleSoulstoneCast(spellID)
         end
-    elseif event == "PLAYER_ENTERING_WORLD" then
-        AA.suppressAnnouncementsUntil = GetTime() + 3
+    elseif event == "PLAYER_LEAVING_WORLD" then
+        -- Start guarding before Forever clears its aura/enchant APIs; waiting for
+        -- PLAYER_ENTERING_WORLD is too late and permits false expiry warnings.
+        AA:BeginWorldTransition(60)
+    elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
+        AA:BeginWorldTransition(nil, true)
         if AA.initialized then AA:Refresh() end
     elseif AA.initialized then
         AA:Refresh()

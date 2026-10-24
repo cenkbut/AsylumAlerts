@@ -2,7 +2,7 @@
 ## Title: |cff9b7cffAsylum|r|cffeeeeeeAlerts|r
 ## Notes: Movable cooldown bars and ready/expired alerts for potions, trinkets, Soulstone, weapon enchants, flasks, and personal buffs.
 ## Author: Freddykr
-## Version: 0.5.0
+## Version: 0.5.1
 ## SavedVariables: AsylumAlertsDB
 
 Core.lua
